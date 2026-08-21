@@ -249,10 +249,11 @@ func startAntigravityCallbackServer(port int) (*http.Server, int, <-chan callbac
 			State: strings.TrimSpace(q.Get("state")),
 		}
 		resultCh <- res
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if res.Code != "" && res.Error == "" {
-			_, _ = w.Write([]byte("<h1>Login successful</h1><p>You can close this window.</p>"))
+			_, _ = w.Write([]byte(antigravityLoginSuccessHtml))
 		} else {
-			_, _ = w.Write([]byte("<h1>Login failed</h1><p>Please check the CLI output.</p>"))
+			_, _ = w.Write([]byte(antigravityLoginFailureHtml))
 		}
 	})
 
