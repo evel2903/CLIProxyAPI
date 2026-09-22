@@ -149,6 +149,13 @@ attemptLoop:
 
 			if httpResp.StatusCode == http.StatusTooManyRequests {
 				decision := decideAntigravity429(bodyBytes)
+				if decision.kind == antigravity429DecisionFullQuotaExhausted || helps.AntigravityQuotaSwitchRequired(bodyBytes) {
+					if useCredits && antigravityHasExplicitCreditsBalanceExhaustedReason(bodyBytes) {
+						markAntigravityCreditsPermanentlyDisabled(auth)
+					}
+					err = newAntigravityStatusErr(httpResp.StatusCode, bodyBytes)
+					return cliproxyexecutor.Response{}, err
+				}
 				switch decision.kind {
 				case antigravity429DecisionInstantRetrySameAuth:
 					if attempt+1 < attempts {
@@ -390,6 +397,13 @@ attemptLoop:
 				helps.AppendAPIResponseChunk(ctx, e.cfg, bodyBytes)
 				if httpResp.StatusCode == http.StatusTooManyRequests {
 					decision := decideAntigravity429(bodyBytes)
+					if decision.kind == antigravity429DecisionFullQuotaExhausted || helps.AntigravityQuotaSwitchRequired(bodyBytes) {
+						if useCredits && antigravityHasExplicitCreditsBalanceExhaustedReason(bodyBytes) {
+							markAntigravityCreditsPermanentlyDisabled(auth)
+						}
+						err = newAntigravityStatusErr(httpResp.StatusCode, bodyBytes)
+						return cliproxyexecutor.Response{}, err
+					}
 
 					switch decision.kind {
 					case antigravity429DecisionInstantRetrySameAuth:

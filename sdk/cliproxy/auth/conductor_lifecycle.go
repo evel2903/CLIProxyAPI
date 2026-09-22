@@ -125,6 +125,18 @@ func (m *Manager) Update(ctx context.Context, auth *Auth) (*Auth, error) {
 		if len(auth.ModelStates) == 0 && len(existing.ModelStates) > 0 {
 			auth.ModelStates = existing.ModelStates
 		}
+		// Token refreshes may have started before the latest quota observation.
+		for key, state := range existing.ModelStates {
+			if !strings.HasPrefix(key, antigravityQuotaPrefix) || state == nil {
+				continue
+			}
+			if incoming := auth.ModelStates[key]; incoming == nil || incoming.UpdatedAt.Before(state.UpdatedAt) {
+				if auth.ModelStates == nil {
+					auth.ModelStates = make(map[string]*ModelState)
+				}
+				auth.ModelStates[key] = state.Clone()
+			}
+		}
 		if existing.Quota.Exceeded && existing.Quota.Reason == "credential_quota" && existing.Quota.NextRecoverAt.After(time.Now()) {
 			auth.Unavailable = existing.Unavailable
 			auth.NextRetryAfter = existing.NextRetryAfter

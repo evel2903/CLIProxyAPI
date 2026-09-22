@@ -203,6 +203,7 @@ func (s *Service) Run(ctx context.Context) error {
 	if s.coreManager != nil && !homeEnabled {
 		interval := 15 * time.Minute
 		s.coreManager.StartAutoRefresh(context.Background(), interval)
+		go s.coreManager.RunQuotaRefresh(ctx, time.Minute)
 		log.Infof("core auth auto-refresh started (interval=%s)", interval)
 	}
 

@@ -189,6 +189,7 @@ func (h *Handler) APICall(c *gin.Context) {
 	}
 	httpClient.Transport = h.apiCallTransport(auth, requestProxyURL)
 
+	quotaObservedAt := time.Now()
 	resp, errDo := httpClient.Do(req)
 	if errDo != nil {
 		log.WithError(errDo).Debug("management APICall request failed")
@@ -207,11 +208,46 @@ func (h *Handler) APICall(c *gin.Context) {
 		return
 	}
 
+	if h.authManager != nil && auth != nil && auth.Provider == "antigravity" &&
+		tokenResolved && token != "" && req.Header.Get("Authorization") == "Bearer "+token &&
+		method == http.MethodPost && hostOverride == "" && resp.StatusCode == http.StatusOK &&
+		isAntigravityQuotaSummaryURL(parsedURL) && isAntigravityQuotaSummaryRequest(body.Data, auth) &&
+		resp.Request != nil && isAntigravityQuotaSummaryURL(resp.Request.URL) {
+		h.authManager.ApplyAntigravityQuotaSummary(c.Request.Context(), auth.ID, respBody, quotaObservedAt)
+	}
 	c.JSON(http.StatusOK, apiCallResponse{
 		StatusCode: resp.StatusCode,
 		Header:     resp.Header,
 		Body:       string(respBody),
 	})
+}
+
+func isAntigravityQuotaSummaryRequest(raw string, auth *coreauth.Auth) bool {
+	if auth == nil || auth.Metadata == nil {
+		return false
+	}
+	project, ok := auth.Metadata["project_id"].(string)
+	if !ok || strings.TrimSpace(project) == "" {
+		return false
+	}
+	var request struct {
+		Project string `json:"project"`
+	}
+	if json.Unmarshal([]byte(raw), &request) != nil {
+		return false
+	}
+	return strings.TrimSpace(request.Project) == strings.TrimSpace(project)
+}
+
+func isAntigravityQuotaSummaryURL(u *url.URL) bool {
+	if u == nil || u.Scheme != "https" || u.User != nil || u.Port() != "" || u.Path != "/v1internal:retrieveUserQuotaSummary" {
+		return false
+	}
+	switch u.Hostname() {
+	case "daily-cloudcode-pa.googleapis.com", "daily-cloudcode-pa.sandbox.googleapis.com", "cloudcode-pa.googleapis.com":
+		return true
+	}
+	return false
 }
 
 func firstNonEmptyString(values ...*string) string {
