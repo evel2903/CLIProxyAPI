@@ -827,6 +827,11 @@ func isAuthBlockedForModel(auth *Auth, model string, now time.Time) (bool, block
 	if auth.Disabled || auth.Status == StatusDisabled {
 		return true, blockReasonDisabled, time.Time{}
 	}
+	if auth.Provider == "antigravity" {
+		if state := auth.ModelStates[antigravityQuotaPrefix+AntigravityQuotaFamily(model)]; state != nil && state.Quota.NextRecoverAt.After(now) {
+			return true, blockReasonCooldown, state.Quota.NextRecoverAt
+		}
+	}
 	if hasUnauthorizedAuthFailure(auth) {
 		return true, blockReasonOther, time.Time{}
 	}

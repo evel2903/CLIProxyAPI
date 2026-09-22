@@ -274,6 +274,17 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 		if len(auth.ModelStates) == 0 && len(existing.ModelStates) > 0 {
 			auth.ModelStates = existing.ModelStates
 		}
+		for key, state := range existing.ModelStates {
+			if !strings.HasPrefix(key, antigravityQuotaPrefix) || state == nil {
+				continue
+			}
+			if incoming := auth.ModelStates[key]; incoming == nil || incoming.UpdatedAt.Before(state.UpdatedAt) {
+				if auth.ModelStates == nil {
+					auth.ModelStates = make(map[string]*ModelState)
+				}
+				auth.ModelStates[key] = state.Clone()
+			}
+		}
 		if credChanged || mode == updateModeRefresh {
 			auth.RejectedAccessToken = ""
 			if hasUnauthorizedAuthFailure(existing) || (auth.LastError != nil && isUnauthorizedError(auth.LastError)) {
