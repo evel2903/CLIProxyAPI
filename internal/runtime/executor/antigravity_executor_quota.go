@@ -31,11 +31,11 @@ func (e *AntigravityExecutor) FetchQuotaSummary(ctx context.Context, auth *clipr
 	if err != nil {
 		return nil, err
 	}
-	baseURLs := antigravityBaseURLFallbackOrder(auth)
-	if len(baseURLs) == 0 {
+	baseURL := resolveAntigravityRequestBaseURL(auth)
+	if strings.TrimSpace(baseURL) == "" {
 		return nil, fmt.Errorf("Antigravity quota: missing endpoint")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURLs[0], "/")+"/v1internal:retrieveUserQuotaSummary", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/v1internal:retrieveUserQuotaSummary", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
