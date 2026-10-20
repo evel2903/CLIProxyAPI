@@ -132,14 +132,12 @@ func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, c
 			expectedRegEpoch := GlobalModelRegistry().ClientRegistrationEpoch(a.ID)
 			expectedKey := s.antigravityCapabilityKey(a)
 			hints := s.cachedAntigravityHints(a)
-			if hints.ModelIDs != nil {
-				// Publish known catalogs through the same fenced, state-preserving
-				// path as refreshes. An expired catalog remains usable while HTTP
-				// is pending, including its quota and suspension projections.
-				s.applyAntigravityModelHints(ctx, a, provider, hints, expectedKey, a.RegistrationEpoch, expectedRegEpoch)
-				s.asyncProbeAntigravityCapabilities(ctx, a, provider)
-				return true
-			}
+			// Publish the Antigravity catalog (with any cached capability hints)
+			// through the same fenced, state-preserving path as refreshes so the
+			// account stays routable before HTTP completes and across refreshes.
+			s.applyAntigravityModelHints(ctx, a, provider, hints, expectedKey, a.RegistrationEpoch, expectedRegEpoch)
+			s.asyncProbeAntigravityCapabilities(ctx, a, provider)
+			return true
 		} else {
 			models = registry.GetAntigravityModels()
 		}

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 )
@@ -115,7 +116,7 @@ func TestAntigravityFailureBackoffIntegration(t *testing.T) {
 	if failures != 0 {
 		t.Fatal("success did not reset consecutive failures")
 	}
-	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 1 {
+	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != len(registry.GetAntigravityModels()) {
 		t.Fatal("successful retry did not restore models")
 	}
 	status.Store(503)
@@ -125,7 +126,7 @@ func TestAntigravityFailureBackoffIntegration(t *testing.T) {
 	if state := readFailure(); state.failures != 1 {
 		t.Fatal("failure following success did not restart at first window")
 	}
-	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 1 {
+	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != len(registry.GetAntigravityModels()) {
 		t.Fatal("failed refresh discarded last successful catalog")
 	}
 	// A new token must not inherit the old token's authorization/backoff state.

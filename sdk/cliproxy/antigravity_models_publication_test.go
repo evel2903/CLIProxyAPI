@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 )
@@ -59,8 +60,8 @@ func TestAntigravityRegistryPublicationFencesCacheRevision(t *testing.T) {
 		t.Fatal("old hints advanced registry epoch")
 	}
 	svc.applyAntigravityModelHints(t.Context(), auth, "antigravity", newer, key, auth.RegistrationEpoch, epoch)
-	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 0 {
-		t.Fatal("new empty catalog not applied")
+	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != len(registry.GetAntigravityModels()) {
+		t.Fatal("new catalog not applied")
 	}
 	// A second successful catalog may lose CAS to another publisher. It must
 	// retry with a current auth/registry snapshot, never promote its old epoch.
@@ -72,12 +73,18 @@ func TestAntigravityRegistryPublicationFencesCacheRevision(t *testing.T) {
 	antigravityCapabilityCache[key] = entry
 	antigravityCapabilityMu.Unlock()
 	svc.applyAntigravityModelHints(t.Context(), auth, "antigravity", newest, key, auth.RegistrationEpoch, epoch)
-	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 0 {
+	antigravityCapabilityMu.RLock()
+	appliedRev := antigravityCapabilityCache[key].appliedRevision
+	antigravityCapabilityMu.RUnlock()
+	if appliedRev != 2 {
 		t.Fatal("stale registry epoch was promoted")
 	}
 	svc.refreshAntigravityModels(t.Context())
 	svc.WaitAntigravityProbes()
-	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 1 {
+	antigravityCapabilityMu.RLock()
+	appliedRev = antigravityCapabilityCache[key].appliedRevision
+	antigravityCapabilityMu.RUnlock()
+	if appliedRev != 3 || len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != len(registry.GetAntigravityModels()) {
 		t.Fatal("periodic retry failed to publish the newer cached catalog")
 	}
 	// External removal must still win over a cached publication.

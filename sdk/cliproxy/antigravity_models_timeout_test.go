@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
@@ -59,7 +60,7 @@ func TestAntigravityCapabilityProbe_UsesFirstConfiguredEndpoint(t *testing.T) {
 }
 
 // TestAntigravityModelRegistration_AsyncNonBlocking verifies that registerModelsForAuth
-// returns immediately without exposing unverified models and does not block on the probe.
+// returns immediately without blocking on the probe.
 func TestAntigravityModelRegistration_AsyncNonBlocking(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -102,8 +103,8 @@ func TestAntigravityModelRegistration_AsyncNonBlocking(t *testing.T) {
 	}
 
 	models := GlobalModelRegistry().GetModelsForClient(auth.ID)
-	if len(models) != 0 {
-		t.Fatal("unverified models registered before probe completed")
+	if len(models) != len(registry.GetAntigravityModels()) {
+		t.Fatalf("expected baseline static models to be registered immediately, got %d want %d", len(models), len(registry.GetAntigravityModels()))
 	}
 }
 

@@ -628,13 +628,11 @@ func (s *Service) antigravityHomeEnabled() bool {
 	return s.cfg != nil && s.cfg.Home.Enabled
 }
 
-func filterAntigravityModels(models []*ModelInfo, hints antigravityModelCapabilityHints) []*ModelInfo {
+func filterAntigravityModels(models []*ModelInfo, _ antigravityModelCapabilityHints) []*ModelInfo {
 	filtered := make([]*ModelInfo, 0, len(models))
 	for _, model := range models {
 		if model != nil {
-			if _, ok := hints.ModelIDs[normalizeAntigravityFetchedModelID(model.ID)]; ok {
-				filtered = append(filtered, model)
-			}
+			filtered = append(filtered, model)
 		}
 	}
 	return filtered
@@ -688,9 +686,6 @@ func (s *Service) applyAntigravityModelHints(ctx context.Context, auth *coreauth
 	if ctx.Err() != nil || s.antigravityHomeEnabled() {
 		return
 	}
-	if hints.ModelIDs == nil && len(hints.WebSearchModelIDs) == 0 {
-		return
-	}
 	if s.coreManager != nil {
 		current, exists := s.coreManager.GetByID(auth.ID)
 		if !exists || current == nil || current.Disabled || current.Provider != auth.Provider || current.RegistrationEpoch != expectedEpoch || !antigravityAuthModelSettingsEqual(current, auth) || s.antigravityCapabilityKey(current) != expectedKey {
@@ -698,7 +693,7 @@ func (s *Service) applyAntigravityModelHints(ctx context.Context, auth *coreauth
 		}
 	}
 	var updated bool
-	if hints.ModelIDs != nil {
+	if hints.ModelIDs != nil || len(hints.WebSearchModelIDs) == 0 {
 		// Keep the config snapshot stable through publication. Registry CAS must
 		// remain strict: an epoch from another publisher may use newer auth settings.
 		s.cfgMu.RLock()

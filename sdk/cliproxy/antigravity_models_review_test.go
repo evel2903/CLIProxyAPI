@@ -37,14 +37,14 @@ func TestAntigravityStaleAuthCannotRestoreExcludedModel(t *testing.T) {
 	svc.applyAntigravityModelHints(t.Context(), auth, "antigravity", hints, key, auth.RegistrationEpoch, oldEpoch)
 	svc.refreshAntigravityModels(t.Context())
 	svc.WaitAntigravityProbes()
-	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 0 {
+	if GlobalModelRegistry().ClientSupportsModel(auth.ID, model) {
 		t.Fatal("stale publisher reinstated excluded model")
 	}
 	// Even when a stale queued task captures the new registry epoch it must not
 	// publish the old account-level model settings.
 	currentEpoch := GlobalModelRegistry().ClientRegistrationEpoch(auth.ID)
 	svc.applyAntigravityModelHints(t.Context(), auth, "antigravity", hints, key, auth.RegistrationEpoch, currentEpoch)
-	if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 0 {
+	if GlobalModelRegistry().ClientSupportsModel(auth.ID, model) {
 		t.Fatal("stale auth accepted with current registry epoch")
 	}
 }

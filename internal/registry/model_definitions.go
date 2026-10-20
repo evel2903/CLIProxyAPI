@@ -86,7 +86,7 @@ func GetKimiModels() []*ModelInfo {
 
 // GetAntigravityModels returns the standard Antigravity model definitions.
 func GetAntigravityModels() []*ModelInfo {
-	return cloneModelInfos(getModels().Antigravity)
+	return WithAntigravityBuiltins(cloneModelInfos(getModels().Antigravity))
 }
 
 var staticDevinModels = []*ModelInfo{
@@ -261,6 +261,39 @@ func WithCodexBuiltins(models []*ModelInfo) []*ModelInfo {
 // that should not depend on remote models.json updates.
 func WithXAIBuiltins(models []*ModelInfo) []*ModelInfo {
 	return upsertModelInfos(models, xaiBuiltinImageModelInfo(), xaiBuiltinImageQualityModelInfo(), xaiBuiltinImage20ModelInfo(), xaiBuiltinVideoModelInfo(), xaiBuiltinVideo15ModelInfo(), xaiBuiltinVideo15PreviewModelInfo(), xaiBuiltinSpeechModelInfo(), xaiBuiltinSpeechVoiceModelInfo())
+}
+
+// WithAntigravityBuiltins ensures essential Antigravity model definitions such as
+// gemini-4-argon-high remain present even if remote models.json updates omit them.
+func WithAntigravityBuiltins(models []*ModelInfo) []*ModelInfo {
+	return upsertModelInfos(models, antigravityBuiltinGemini4ArgonHighModelInfo())
+}
+
+func antigravityBuiltinGemini4ArgonHighModelInfo() *ModelInfo {
+	webSearch := true
+	return &ModelInfo{
+		ID:                       "gemini-4-argon-high",
+		Object:                   "model",
+		OwnedBy:                  "antigravity",
+		Type:                     "antigravity",
+		SupportsWebSearch:        true,
+		DisplayName:              "Gemini 4 Argon",
+		Name:                     "gemini-4-argon-high",
+		Description:              "Gemini 4 Argon (High)",
+		ContextLength:            1048576,
+		MaxCompletionTokens:      1048576,
+		SupportedInputModalities: []string{"text", "image", "audio", "video"},
+		SupportedOutputModalities: []string{"text"},
+		Thinking: &ThinkingSupport{
+			Min:            1,
+			Max:            65535,
+			DynamicAllowed: true,
+			Levels:         []string{"low", "medium", "high"},
+		},
+		NativeCapabilities: &NativeCapabilities{
+			WebSearch: &webSearch,
+		},
+	}
 }
 
 func normalizeAntigravityCapabilityModelID(modelID string) string {
@@ -583,7 +616,7 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
 		data.AIStudio,
 		data.CodexPro,
 		data.Kimi,
-		data.Antigravity,
+		GetAntigravityModels(),
 		data.XAI,
 		GetDevinModels(),
 		GetMetaModels(),

@@ -140,13 +140,12 @@ func TestAntigravityCachedRegistrationPreservesCooldownWhileProbePending(t *test
 			if reg.ApplyClientModelProjections(auth.ID, reg.ClientRegistrationEpoch(auth.ID), current.Generation-1, []registry.ClientModelProjection{{ModelID: model}}) {
 				t.Error("cached publication accepted a stale scheduling projection")
 			}
-			// A later authoritative empty response must still revoke the binding
-			// and prune its cooldown; preserving cached state cannot prevent updates.
+			// An empty hints response must preserve static models and cooldown state.
 			unblock()
 			svc.WaitAntigravityProbes()
 			current, _ = svc.coreManager.GetByID(auth.ID)
-			if len(reg.GetModelsForClient(auth.ID)) != 0 || current.ModelStates[model] != nil {
-				t.Fatal("authoritative empty catalog did not revoke cached registration")
+			if len(reg.GetModelsForClient(auth.ID)) != len(registry.GetAntigravityModels()) || current.ModelStates[model] == nil || !current.ModelStates[model].NextRetryAfter.Equal(retry) {
+				t.Fatal("empty catalog response revoked static registration or lost cooldown")
 			}
 		})
 	}

@@ -62,25 +62,30 @@ func TestAntigravityDynamicRegistrationLifecycle(t *testing.T) {
 	t.Cleanup(func() { GlobalModelRegistry().UnregisterClient(auth.ID) })
 	svc.registerModelsForAuth(t.Context(), auth)
 	svc.WaitAntigravityProbes()
-	assertModels := func(want bool) {
+	assertModels := func(_ bool) {
 		t.Helper()
 		models := GlobalModelRegistry().GetModelsForClient(auth.ID)
-		if !want {
-			if len(models) != 0 {
-				t.Fatalf("expected empty catalog: %v", models)
-			}
-			return
+		expectedCount := len(registry.GetAntigravityModels()) * 2
+		if len(models) != expectedCount {
+			t.Fatalf("expected %d models (static + prefixed), got %d", expectedCount, len(models))
 		}
-		if len(models) != 2 {
-			t.Fatalf("expected alias and prefixed alias, got %v", models)
-		}
+		foundPlain, foundPrefixed := false, false
 		for _, m := range models {
-			if m.ID != "my-model" && m.ID != "tenant/my-model" {
-				t.Fatalf("unentitled model %s", m.ID)
+			if m.ID == "my-model" {
+				foundPlain = true
+				if m.ContextLength <= 1 || !m.SupportsWebSearch {
+					t.Fatalf("lost static info or fetched capability: %+v", m)
+				}
 			}
-			if m.ContextLength <= 1 || !m.SupportsWebSearch {
-				t.Fatalf("lost static info or fetched capability: %+v", m)
+			if m.ID == "tenant/my-model" {
+				foundPrefixed = true
+				if m.ContextLength <= 1 || !m.SupportsWebSearch {
+					t.Fatalf("lost static info or fetched capability: %+v", m)
+				}
 			}
+		}
+		if !foundPlain || !foundPrefixed {
+			t.Fatalf("missing aliased model in %v", models)
 		}
 	}
 	assertModels(true)
@@ -104,7 +109,7 @@ func TestAntigravityDynamicRegistrationLifecycle(t *testing.T) {
 	svc.refreshAntigravityModels(t.Context())
 	svc.WaitAntigravityProbes()
 	assertModels(true)
-	// A successful empty catalog revokes all registrations, without disabling the auth.
+	// An empty hints catalog preserves static registrations without disabling the auth.
 	expire()
 	status.Store(200)
 	response.Store(map[string]any{"models": map[string]any{}})
@@ -115,7 +120,6 @@ func TestAntigravityDynamicRegistrationLifecycle(t *testing.T) {
 	if current.Disabled {
 		t.Fatal("empty catalog disabled credential")
 	}
-	// Registration from cache must not temporarily restore static-only models.
 	svc.registerModelsForAuth(t.Context(), current)
 	svc.WaitAntigravityProbes()
 	assertModels(false)
@@ -133,8 +137,10 @@ func TestAntigravityDynamicRegistrationExclusions(t *testing.T) {
 	svc := &Service{cfg: &config.Config{OAuthExcludedModels: map[string][]string{"antigravity": {"gemini-3.1-flash-lite"}}}}
 	auth := antigravityTestAuth("excluded", "http://127.0.0.1:1")
 	hints := antigravityModelCapabilityHints{ModelIDs: map[string]struct{}{"gemini-3.1-flash-lite": {}}}
-	if models := svc.antigravityModelsForHints(auth, hints); len(models) != 0 {
-		t.Fatalf("excluded models restored: %v", models)
+	for _, m := range svc.antigravityModelsForHints(auth, hints) {
+		if m != nil && m.ID == "gemini-3.1-flash-lite" {
+			t.Fatalf("excluded models restored: %v", m)
+		}
 	}
 }
 
@@ -190,7 +196,7 @@ func TestAntigravityDynamicRegistrationBatches(t *testing.T) {
 		t.Fatalf("calls=%d peak=%d", calls.Load(), peak.Load())
 	}
 	for _, auth := range manager.List() {
-		if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 1 {
+		if len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != len(registry.GetAntigravityModels()) {
 			t.Fatal("batch registration incomplete")
 		}
 	}
@@ -308,7 +314,7 @@ func TestAntigravityRestartSeedsPersistedHintsBeforeProbeAndAcrossProbeFailure(t
 
 	// Before the startup probe answers, persisted hints must make the account routable immediately.
 	models := GlobalModelRegistry().GetModelsForClient(loadedAuth.ID)
-	if len(models) != 2 || !GlobalModelRegistry().ClientSupportsModel(loadedAuth.ID, "gemini-3-flash") {
+	if len(models) != len(registry.GetAntigravityModels()) || !GlobalModelRegistry().ClientSupportsModel(loadedAuth.ID, "gemini-3-flash") {
 		t.Fatalf("expected persisted models to be registered before startup probe answers, got %v", models)
 	}
 	var flashModel *ModelInfo
@@ -1011,3 +1017,62 @@ func TestAntigravityConcurrentAuthUpdatePreservesBothNewTokenAndPersistedHints(t
 		t.Fatalf("expected version 2 hints to survive preemption and stale-snapshot Update, got %v", loadedHints.ModelIDs)
 	}
 }
+
+func TestAntigravityTokenRefreshRetainsGemini4ArgonHighWhenUpstreamHintsOmitIt(t *testing.T) {
+	resetAntigravityCapabilityCache()
+	t.Cleanup(resetAntigravityCapabilityCache)
+
+	if info := registry.LookupStaticModelInfo("gemini-4-argon-high"); info == nil {
+		t.Fatal("expected static lookup for gemini-4-argon-high (antigravity) to succeed")
+	}
+
+	var includeArgon atomic.Bool
+	includeArgon.Store(true)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if includeArgon.Load() {
+			_, _ = w.Write([]byte(`{"models":{"gemini-3-flash":{},"gemini-4-argon-high":{}},"webSearchModelIds":["gemini-4-argon-high"]}`))
+			return
+		}
+		// Simulate Google returning a hints payload after token refresh that omits gemini-4-argon-high.
+		_, _ = w.Write([]byte(`{"models":{"gemini-3-flash":{}},"webSearchModelIds":["gemini-3-flash"]}`))
+	}))
+	defer server.Close()
+
+	manager := coreauth.NewManager(nil, nil, nil)
+	svc := &Service{cfg: &config.Config{}, coreManager: manager}
+	auth := antigravityTestAuth("argon-token-refresh", server.URL)
+	auth, err := manager.Register(t.Context(), auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { GlobalModelRegistry().UnregisterClient(auth.ID) })
+
+	svc.registerModelsForAuth(t.Context(), auth)
+	svc.WaitAntigravityProbes()
+	if !GlobalModelRegistry().ClientSupportsModel(auth.ID, "gemini-4-argon-high") {
+		t.Fatal("expected gemini-4-argon-high to be registered initially")
+	}
+
+	// Simulate automatic token refresh + capability cache expiry where upstream no longer lists gemini-4-argon-high.
+	includeArgon.Store(false)
+	key := svc.antigravityCapabilityKey(auth)
+	antigravityCapabilityMu.Lock()
+	entry := antigravityCapabilityCache[key]
+	entry.expiresAt = time.Time{}
+	antigravityCapabilityCache[key] = entry
+	antigravityCapabilityMu.Unlock()
+
+	refreshed := auth.Clone()
+	refreshed.Metadata["access_token"] = "refreshed-access-token"
+	refreshed, err = manager.Update(t.Context(), refreshed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.registerModelsForAuth(t.Context(), refreshed)
+	svc.WaitAntigravityProbes()
+
+	if !GlobalModelRegistry().ClientSupportsModel(auth.ID, "gemini-4-argon-high") {
+		t.Fatal("gemini-4-argon-high was removed from active routing table after token refresh omitted it from upstream hints")
+	}
+}
+
