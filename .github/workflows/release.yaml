@@ -35,7 +35,7 @@ jobs:
 
           cat > "$release_notes_file" <<'EOF'
           <!-- cliproxyapi-linux-release-assets:start -->
-          Personal fork of [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI), trimmed to a Windows-only release for use as the core behind [EvelProxyTool](https://github.com/lzt404/EvelProxyTool). Only `CLIProxyAPI_<version>_windows_amd64.zip` is built here — see upstream for macOS/Linux/FreeBSD builds.
+          Personal fork of [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI), trimmed to Windows (`amd64`) and macOS Apple Silicon (`aarch64`) releases for use as the core behind [EvelProxyTool](https://github.com/lzt404/EvelProxyTool).
           <!-- cliproxyapi-linux-release-assets:end -->
           EOF
 
@@ -97,6 +97,12 @@ jobs:
             goarch: amd64
             asset_arch: amd64
             archive_format: zip
+          - target: darwin-aarch64
+            runner: macos-15
+            goos: darwin
+            goarch: arm64
+            asset_arch: aarch64
+            archive_format: tar.gz
     steps:
       - uses: actions/checkout@v6
         with:
